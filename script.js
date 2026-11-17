@@ -1,4 +1,5 @@
 
+
 const categories = [
   {
     name: "Geografía",
@@ -100,8 +101,6 @@ let wheelAngle = 0;
 let roundCorrect = 0;
 let attemptedTeams = new Set();
 let answeringTeam = 0;
-
-let wrongAnswerTimeout = null;
 
 const letters = ["A", "B", "C", "D"];
 
@@ -311,9 +310,6 @@ function spinWheel() {
 }
 
 function startQuestion() {
-  clearInterval(timer);
-  clearTimeout(wrongAnswerTimeout);
-
   const cat = categories[categoryIndex];
   const q = cat.questions[questionIndex];
 
@@ -337,8 +333,6 @@ function startQuestion() {
   $("operatorHint").textContent =
     "Selecciona qué equipo está respondiendo y luego marca su respuesta en la pantalla.";
 
-  $("feedbackOverlay").classList.remove("show");
-
   renderAnsweringTeams();
 
   $("teamQuestionScore").textContent =
@@ -351,13 +345,15 @@ function startQuestion() {
     const btn = document.createElement("button");
 
     btn.className = "answer-btn";
+    btn.type = "button";
 
     btn.innerHTML = `
       <span class="answer-letter">${letters[i]}</span>
       <span>${escapeHTML(answer)}</span>
     `;
 
-    btn.addEventListener("click", () => answerQuestion(i));
+    // Se envía también el botón seleccionado para poder marcarlo.
+    btn.addEventListener("click", () => answerQuestion(i, btn));
 
     grid.appendChild(btn);
   });
@@ -402,6 +398,9 @@ function selectAnsweringTeam(i) {
   renderAnsweringTeams();
   updateTimer();
   startTimer();
+
+  $("operatorHint").textContent =
+    `Está respondiendo ${teams[answeringTeam].name}. ¡Tiene 30 segundos!`;
 }
 
 function startTimer() {
@@ -432,32 +431,27 @@ function updateTimer() {
   $("timerRing").classList.toggle("warning", timeLeft <= 7);
 }
 
-function answerQuestion(index) {
+function answerQuestion(index, selectedButton) {
   if (locked || attemptedTeams.has(answeringTeam)) return;
 
   const q = categories[categoryIndex].questions[questionIndex];
-  const selectedButton = $("answerGrid").children[index];
-
-  if (!selectedButton) return;
 
   attemptedTeams.add(answeringTeam);
-  clearInterval(timer);
 
   const correct = index === q.c;
 
   if (correct) {
-    locked = true;
+    // Respuesta correcta.
     selectedButton.classList.add("correct");
 
     teams[answeringTeam].score += 100;
-    roundCorrect++;
+    locked = true;
 
+    clearInterval(timer);
     renderScores();
 
     $("teamQuestionScore").textContent =
       teams[answeringTeam].score;
-
-    renderAnsweringTeams();
 
     showFeedback(
       true,
@@ -467,37 +461,13 @@ function answerQuestion(index) {
     return;
   }
 
-  // RESPUESTA INCORRECTA
-  locked = true;
-
-  // Marcar la respuesta elegida en rojo
+  // Respuesta incorrecta: se marca en rojo.
   selectedButton.classList.add("wrong");
 
-  // Deshabilitar temporalmente las opciones
-  document.querySelectorAll(".answer-btn").forEach(btn => {
-    btn.disabled = true;
-  });
-
-  // Mostrar qué equipo perdió su oportunidad
-  $("operatorHint").textContent =
-    `¡Respuesta incorrecta! ${teams[answeringTeam].name} perdió su turno.`;
-
-  // Esperar para que se pueda ver claramente la respuesta roja
-  wrongAnswerTimeout = setTimeout(() => {
-
-    // Habilitar nuevamente todas las respuestas
-    document.querySelectorAll(".answer-btn").forEach(btn => {
-      btn.disabled = false;
-    });
-
-    // Liberar el bloqueo
-    locked = false;
-
-    // Pasar el turno al siguiente equipo disponible
-    passAfterAttempt(false);
-
-  }, 1200);
-} // IMPORTANTE: aquí se cierra answerQuestion correctamente.
+  // No se bloquean las demás respuestas.
+  // Se pasa la oportunidad al siguiente equipo.
+  passAfterAttempt(false);
+}
 
 function passAfterAttempt(timeout) {
   clearInterval(timer);
@@ -520,7 +490,6 @@ function passAfterAttempt(timeout) {
     answeringTeam = remaining[0];
     timeLeft = 30;
 
-    // Actualizar los equipos disponibles
     renderAnsweringTeams();
     updateTimer();
 
@@ -531,18 +500,15 @@ function passAfterAttempt(timeout) {
     $("operatorHint").textContent =
       msg + " Selecciona el equipo y marca su respuesta.";
 
-    // Iniciar el tiempo del siguiente equipo
     startTimer();
-
     return;
   }
 
-  // Si ningún equipo acertó, cerrar la pregunta
+  // Todos los equipos ya intentaron responder.
   locked = true;
+  clearInterval(timer);
 
   const q = categories[categoryIndex].questions[questionIndex];
-
-  renderAnsweringTeams();
 
   showFeedback(
     false,
@@ -573,9 +539,6 @@ function showFeedback(correct, message) {
 }
 
 function nextQuestion() {
-  clearInterval(timer);
-  clearTimeout(wrongAnswerTimeout);
-
   $("feedbackOverlay").classList.remove("show");
 
   $("operatorHint").textContent =
@@ -623,6 +586,8 @@ function nextTeam() {
 }
 
 function showWinner() {
+  clearInterval(timer);
+
   const max = Math.max(...teams.map(t => t.score));
 
   const winners = teams.filter(t => t.score === max);
@@ -652,11 +617,17 @@ function showWinner() {
 
 function resetToSetup() {
   clearInterval(timer);
-  clearTimeout(wrongAnswerTimeout);
 
   teams = [];
   teamCount = 2;
   currentTeam = 0;
+  attemptedTeams = new Set();
+  answeringTeam = 0;
+  locked = false;
+  spinning = false;
+  wheelAngle = 0;
+
+  $("feedbackOverlay").classList.remove("show");
 
   renderTeamInputs();
   showScreen("setupScreen");
@@ -709,7 +680,7 @@ $("brandHome").addEventListener("click", e => {
 
   if (confirm("¿Volver al inicio? Se perderá la partida actual.")) {
     clearInterval(timer);
-    clearTimeout(wrongAnswerTimeout);
+    $("feedbackOverlay").classList.remove("show");
     showScreen("homeScreen");
   }
 });
