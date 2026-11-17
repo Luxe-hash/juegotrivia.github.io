@@ -1,3 +1,4 @@
+
 const categories = [
   {
     name: "Geografía",
@@ -99,6 +100,8 @@ let wheelAngle = 0;
 let roundCorrect = 0;
 let attemptedTeams = new Set();
 let answeringTeam = 0;
+
+let wrongAnswerTimeout = null;
 
 const letters = ["A", "B", "C", "D"];
 
@@ -308,6 +311,9 @@ function spinWheel() {
 }
 
 function startQuestion() {
+  clearInterval(timer);
+  clearTimeout(wrongAnswerTimeout);
+
   const cat = categories[categoryIndex];
   const q = cat.questions[questionIndex];
 
@@ -327,6 +333,11 @@ function startQuestion() {
     String(questionIndex + 1).padStart(2, "0");
 
   $("questionText").textContent = q.q;
+
+  $("operatorHint").textContent =
+    "Selecciona qué equipo está respondiendo y luego marca su respuesta en la pantalla.";
+
+  $("feedbackOverlay").classList.remove("show");
 
   renderAnsweringTeams();
 
@@ -427,6 +438,8 @@ function answerQuestion(index) {
   const q = categories[categoryIndex].questions[questionIndex];
   const selectedButton = $("answerGrid").children[index];
 
+  if (!selectedButton) return;
+
   attemptedTeams.add(answeringTeam);
   clearInterval(timer);
 
@@ -437,10 +450,14 @@ function answerQuestion(index) {
     selectedButton.classList.add("correct");
 
     teams[answeringTeam].score += 100;
+    roundCorrect++;
+
     renderScores();
 
     $("teamQuestionScore").textContent =
       teams[answeringTeam].score;
+
+    renderAnsweringTeams();
 
     showFeedback(
       true,
@@ -450,30 +467,37 @@ function answerQuestion(index) {
     return;
   }
 
-  // Respuesta incorrecta: mostrar en rojo
+  // RESPUESTA INCORRECTA
   locked = true;
+
+  // Marcar la respuesta elegida en rojo
   selectedButton.classList.add("wrong");
 
-  // Bloquear las demás opciones durante la transición
+  // Deshabilitar temporalmente las opciones
   document.querySelectorAll(".answer-btn").forEach(btn => {
     btn.disabled = true;
   });
 
+  // Mostrar qué equipo perdió su oportunidad
   $("operatorHint").textContent =
     `¡Respuesta incorrecta! ${teams[answeringTeam].name} perdió su turno.`;
 
-  // Dar tiempo para que la clase vea el error
-  setTimeout(() => {
-  // Volver a habilitar las respuestas para el siguiente equipo
-  document.querySelectorAll(".answer-btn").forEach(btn => {
-    btn.disabled = false;
-  });
+  // Esperar para que se pueda ver claramente la respuesta roja
+  wrongAnswerTimeout = setTimeout(() => {
 
-  locked = false;
+    // Habilitar nuevamente todas las respuestas
+    document.querySelectorAll(".answer-btn").forEach(btn => {
+      btn.disabled = false;
+    });
 
-  // Pasar el turno al siguiente equipo
-  passAfterAttempt(false);
-}, 1200);
+    // Liberar el bloqueo
+    locked = false;
+
+    // Pasar el turno al siguiente equipo disponible
+    passAfterAttempt(false);
+
+  }, 1200);
+} // IMPORTANTE: aquí se cierra answerQuestion correctamente.
 
 function passAfterAttempt(timeout) {
   clearInterval(timer);
@@ -496,6 +520,7 @@ function passAfterAttempt(timeout) {
     answeringTeam = remaining[0];
     timeLeft = 30;
 
+    // Actualizar los equipos disponibles
     renderAnsweringTeams();
     updateTimer();
 
@@ -506,13 +531,18 @@ function passAfterAttempt(timeout) {
     $("operatorHint").textContent =
       msg + " Selecciona el equipo y marca su respuesta.";
 
+    // Iniciar el tiempo del siguiente equipo
     startTimer();
+
     return;
   }
 
+  // Si ningún equipo acertó, cerrar la pregunta
   locked = true;
 
   const q = categories[categoryIndex].questions[questionIndex];
+
+  renderAnsweringTeams();
 
   showFeedback(
     false,
@@ -543,6 +573,9 @@ function showFeedback(correct, message) {
 }
 
 function nextQuestion() {
+  clearInterval(timer);
+  clearTimeout(wrongAnswerTimeout);
+
   $("feedbackOverlay").classList.remove("show");
 
   $("operatorHint").textContent =
@@ -557,6 +590,8 @@ function nextQuestion() {
 }
 
 function finishTurn() {
+  clearInterval(timer);
+
   $("roundEndTeam").textContent = teams[currentTeam].name;
 
   $("roundEndMessage").textContent =
@@ -617,6 +652,7 @@ function showWinner() {
 
 function resetToSetup() {
   clearInterval(timer);
+  clearTimeout(wrongAnswerTimeout);
 
   teams = [];
   teamCount = 2;
@@ -673,6 +709,7 @@ $("brandHome").addEventListener("click", e => {
 
   if (confirm("¿Volver al inicio? Se perderá la partida actual.")) {
     clearInterval(timer);
+    clearTimeout(wrongAnswerTimeout);
     showScreen("homeScreen");
   }
 });
